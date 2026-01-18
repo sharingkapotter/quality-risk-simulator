@@ -1,4 +1,4 @@
-Quality & Risk Simulator
+**Quality & Risk Simulator**
 Overview
 
 This project is a deliberately imperfect microservices-based system designed to explore authentication, resilience, and failure handling in distributed environments.
