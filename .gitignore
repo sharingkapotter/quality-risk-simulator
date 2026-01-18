@@ -1,0 +1,16 @@
+# Build outputs
+bin/
+obj/
+
+# Visual Studio
+.vs/
+
+# User secrets
+**/appsettings.Development.json
+
+# Docker
+**/.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
