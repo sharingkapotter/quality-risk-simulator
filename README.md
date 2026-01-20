@@ -1,149 +1,135 @@
-Quality & Risk Simulator — Overview
+# Quality & Risk Simulator  
+**A microservices playground for learning failure modes, resilience, and distributed systems**
 
-This project is a deliberately imperfect microservices-based system built to explore authentication, resilience, and failure handling in distributed environments.
+[![Docker Compose](https://img.shields.io/badge/docker%20compose-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)  
+[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/quality-risk-simulator?style=for-the-badge)](https://github.com/YOUR_USERNAME/quality-risk-simulator)
 
-Instead of optimizing for feature completeness, the focus is on observable failure modes and the engineering decisions required to handle them cleanly.
+This is **not** a production-grade application.  
 
-The goal is to make system behavior easy to reason about when things don’t go well.
+It is a **deliberately imperfect** microservices system designed to expose real-world failure patterns and teach clean handling of authentication, resilience, timeouts, retries, circuit breakers, and cascading failures.
 
-Running the system with Docker
+The focus is on **observability** and **reasoning about behavior when things break** — not on feature richness or polish.
 
-The entire system runs locally using Docker and docker-compose.
+## ✨ Key Learning Objectives
 
-Prerequisites
+- Stateless, independent JWT authentication
+- Graceful degradation with unreliable downstream services
+- Preventing cascading failures using timeouts, retries & circuit breakers
+- Explicit HTTP semantics for different failure modes
+- Debugging distributed systems (logs, misconfigurations, etc.)
 
-Docker Desktop
+## 🏗️ Architecture Overview
 
-Start all services
+Three loosely coupled, stateless services:
 
-From the project root:
+| Service          | Responsibility                              | Key Behaviors / Patterns                                      |
+|------------------|---------------------------------------------|----------------------------------------------------------------|
+| **UserService**     | Issues JWT tokens                           | Authentication only, no downstream calls                       |
+| **OrderService**    | Core business logic, order creation         | Validates JWT independently<br>• Timeouts<br>• Retries<br>• Circuit breaker |
+| **PaymentService**  | Payment processing (intentionally flaky)   | Simulates latency, errors, and outages                         |
 
-docker-compose up --build
+**Request flow**  
+Client → UserService (login) → JWT  
+Client → OrderService (create order) → PaymentService (pay)
 
+All inter-service communication uses HTTP + JWT validation — **no shared session or auth coupling at runtime**.
 
-Once running, each service exposes its own Swagger UI for testing.
+## 🚀 Quick Start – Run Locally with Docker
 
-Architecture
+### Prerequisites
 
-The system consists of three independent services:
+- Docker Desktop (or Docker + docker-compose)
 
-UserService
+### Start everything
 
-Responsible for authentication
+```bash
+# From the project root
+docker compose up --build
+```
 
-Issues JWT tokens
+That's it! 🎉
 
-OrderService
+Once healthy, open these Swagger UIs in your browser:
 
-Core business service
+- **UserService**  http://localhost:8001/swagger-ui.html
+- **OrderService**  http://localhost:8002/swagger-ui.html
+- **PaymentService** http://localhost:8003/swagger-ui.html
 
-Performs independent JWT validation
+## 🔐 Authentication Model
 
-Communicates with PaymentService
+- JWTs issued **only** by UserService
+- OrderService validates tokens **independently** (using public key or shared secret)
+- No runtime dependency between services for auth → easy horizontal scaling
 
-Implements resilience patterns (timeouts, retries, circuit breaker)
+## 🛡️ Resilience & Failure Handling
 
-PaymentService
+**PaymentService** is intentionally unreliable:
 
-Intentionally unreliable
+- Random latency (0–5s)
+- Random 5xx errors
+- Random connection refusals / timeouts
 
-Simulates latency and intermittent failures
+**OrderService** protects itself with:
 
-Request flow
-Client → UserService (authentication)
-Client → OrderService (authorized requests)
-OrderService → PaymentService (downstream dependency)
+- **Timeouts** — prevent hanging
+- **Retries** — handle transient issues
+- **Circuit breaker** — fail fast during sustained outages
 
+When the circuit is **open**, OrderService returns fast failures instead of hammering the unhealthy service.
 
-All services are loosely coupled and stateless.
+## 📡 HTTP Response Semantics (deliberately explicit)
 
-Authentication model
+| Scenario                     | HTTP Status             | Meaning to Client                                      |
+|------------------------------|-------------------------|--------------------------------------------------------|
+| Successful payment           | 200 OK                  | All good                                               |
+| Downstream failure (5xx)     | 502 Bad Gateway         | Payment gateway responded with error                   |
+| Downstream timeout           | 504 Gateway Timeout     | Payment gateway didn't respond in time                 |
+| Circuit breaker open         | 503 Service Unavailable | Downstream dependency is unhealthy — try later         |
 
-Authentication is implemented using JWTs:
+This clarity helps clients distinguish between transient issues, timeouts, and prolonged outages.
 
-Tokens are issued by UserService
+## 🐞 Observed Failure Scenario (real example)
 
-Tokens are validated independently by OrderService
+**Symptom**  
+All `/orders` requests returned **502 Bad Gateway** consistently.
 
-There is no runtime dependency between services for authentication
+**Root cause**  
+OrderService was misconfigured — calling its own endpoint instead of PaymentService.
 
-This design keeps services autonomous and allows them to scale independently.
+**Detection**  
+PaymentService logs showed **zero** incoming traffic.
 
-Resilience and failure handling
+**Resolution**  
+Fixed the downstream URL in configuration.
 
-PaymentService is intentionally unstable to simulate real-world downstream behavior.
+**Lesson**  
+Resilience patterns are only as good as your observability and configuration hygiene.
 
-OrderService applies multiple resilience mechanisms:
+## 🎯 Key Takeaways
 
-Timeouts to avoid blocking requests
+- Keep authentication **stateless** and **autonomous**
+- Make failure modes **explicit** and **distinguishable**
+- Use timeouts + retries + circuit breakers to avoid cascades
+- Invest in logs & tracing — they saved hours of debugging
+- Imperfections are **intentional learning tools**
 
-Retries for transient failures
+## 🔮 Potential Future Extensions (intentionally left out)
 
-Circuit breaker to isolate sustained outages
+- API Gateway / Ingress
+- Async payment webhook processing
+- Centralized observability (Prometheus + Grafana + Loki)
+- Configurable resilience thresholds via env vars / config service
+- Rate limiting & bulkhead patterns
 
-When the circuit breaker is open, OrderService fails fast instead of repeatedly calling an unhealthy dependency.
+---
 
-HTTP semantics
+**Closing Note**  
+This project values **engineering judgment** and **understandable failure behavior** over completeness.  
+The "flaws" are **features** — they create teachable moments.
 
-Order creation behavior is intentionally explicit:
+Happy breaking (and fixing) things! 🛠️💥
 
-Condition	Response
-Successful payment	200 OK
-Downstream failure	502 Bad Gateway
-Downstream timeout	504 Gateway Timeout
-Circuit breaker open	503 Service Unavailable
+Feel free to open issues, suggest improvements, or fork it for your own chaos experiments.
+```
 
-This allows clients to clearly distinguish between:
-
-transient failures
-
-temporary unavailability
-
-sustained downstream outages
-
-Observed failure scenario
-
-Issue
-Order requests consistently returned 502.
-
-Root cause
-OrderService was misconfigured and was calling itself instead of PaymentService.
-
-Detection
-PaymentService logs showed no inbound traffic.
-
-Resolution
-Corrected the downstream service endpoint configuration.
-
-Outcome
-Expected behavior was restored and resilience logic was validated.
-
-Key takeaways
-
-Stateless authentication across services
-
-Graceful handling of unreliable dependencies
-
-Prevention of cascading failures
-
-Practical use of retry and circuit breaker patterns
-
-Debugging real distributed system issues
-
-Potential future improvements
-
-These were intentionally deferred to keep the focus on core behavior:
-
-API Gateway integration
-
-Asynchronous payment processing
-
-Centralized logging and metrics
-
-Configuration-driven resilience thresholds
-
-Closing note
-
-This project prioritizes engineering judgment and system behavior over completeness.
-
-The imperfections are intentional and serve as learning points rather than limitations.
